@@ -18,7 +18,11 @@ export default defineConfig({
     },
   },
   server: {
-    port: 5173,
+    // Porta exclusiva deste projeto. A 5173 padrao do Vite ja e disputada por
+    // outros repositorios na mesma maquina, e quando ela esta ocupada o Vite
+    // sobe em outra sem avisar direito — voce acaba olhando a aplicacao errada.
+    port: 5273,
+    strictPort: true,
     // O front chama `/api/...` em caminho relativo e o Vite encaminha para o
     // Nest. Evita CORS no desenvolvimento e faz o build de producao funcionar
     // atras de qualquer reverse proxy sem recompilar a URL da API.

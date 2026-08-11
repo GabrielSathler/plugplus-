@@ -13,12 +13,12 @@ compra no cartão só vira saída de dinheiro no vencimento da fatura.
 
 ```bash
 npm run setup     # instala, compila o pacote compartilhado, cria e semeia o banco
-npm run dev       # sobe API (:3333) e front (:5173) juntos
+npm run dev       # sobe API (:3333) e front (:5273) juntos
 ```
 
 | Endereço | O que é |
 | --- | --- |
-| http://localhost:5173 | Aplicação |
+| http://localhost:5273 | Aplicação |
 | http://localhost:3333/api | API |
 | http://localhost:3333/docs | Swagger |
 
@@ -111,11 +111,34 @@ Coloque a senha do projeto em `DATABASE_URL` no `apps/api/.env`. Se ela tiver
 caractere especial (`@ : / ? # [ ] %`), precisa vir **percent-encoded** — senão
 o erro que aparece é `authentication failed`, que manda procurar no lugar errado.
 
-> **Quando escolher o banco de produção:** se for Supabase com pooler, o Prisma
-> precisa de duas URLs — a *pooled* para a aplicação e uma `directUrl` para as
-> migrações, porque pooler em modo transação não executa migração. E
-> `db.<projeto>.supabase.co` responde só em IPv6, que o runner do GitHub não
-> tem; nesse caso a URL de migração precisa ser a do pooler em modo sessão.
+### Use o pooler, não o endpoint direto
+
+A string que o Supabase mostra primeiro é a **conexão direta**:
+
+```
+postgresql://postgres:SENHA@db.<projeto>.supabase.co:5432/postgres   ← não funciona
+```
+
+Esse host só tem registro **IPv6**, e a porta 5432 é descartada no caminho — o
+pacote não volta e você recebe `P1001: Can't reach database server` depois de um
+timeout longo. Acontece mesmo em rede com IPv6 funcionando para todo o resto.
+
+O que funciona é o **pooler (Supavisor) em modo sessão**, que responde em IPv4:
+
+```
+postgresql://postgres.<projeto>:SENHA@aws-0-<regiao>.pooler.supabase.com:5432/postgres
+```
+
+Repare em duas diferenças fáceis de perder: o usuário deixa de ser `postgres` e
+passa a ser `postgres.<projeto>`, e o host carrega a **região** do projeto. Se a
+região estiver errada o erro é `Tenant or user not found` — que parece problema
+de senha e não é. A string certa está no painel, em
+*Project Settings › Database › Connection string › Session pooler*.
+
+> **Quando escolher o banco de produção:** se usar o pooler em modo *transação*
+> (porta 6543), o Prisma precisa de duas URLs — a pooled para a aplicação e uma
+> `directUrl` para as migrações, porque esse modo não executa migração. Em modo
+> sessão, como está aqui, uma URL só serve para os dois.
 
 ## Integração contínua
 
