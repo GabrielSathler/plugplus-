@@ -93,14 +93,38 @@ certeza: o agendado é fato, o plano é intenção (conta no baseline, marcado),
 cenário é hipótese (só conta se você ligar). Um item de plano com data vencida
 para de contar — a transação real assumiu o lugar dele.
 
-## Trocar SQLite por Postgres
+## Banco de dados
 
-1. `apps/api/prisma/schema.prisma`: trocar `provider = "sqlite"` por `"postgresql"`.
-2. Atualizar `DATABASE_URL` no `.env`.
-3. Opcional: promover os campos `String` marcados com `// enum:` a enums nativos.
-4. `npx prisma migrate dev`.
+PostgreSQL no Supabase. As migrações são **arquivos versionados** em
+`apps/api/prisma/migrations/`, não `db push`. A diferença importa: `db push`
+sincroniza o schema sem deixar histórico — funciona sozinho e quebra assim que
+duas pessoas mexem no schema, porque não há como saber o que já foi aplicado.
 
-Nenhuma regra de negócio depende do banco.
+```bash
+npm run db:deploy    # aplica as migrações existentes (uso normal e CI)
+npm run db:migrate   # cria uma migração nova depois de mexer no schema
+npm run db:reset     # zera e re-semeia — apaga tudo, só em desenvolvimento
+npm run db:studio    # navegador de dados do Prisma
+```
+
+Coloque a senha do projeto em `DATABASE_URL` no `apps/api/.env`. Se ela tiver
+caractere especial (`@ : / ? # [ ] %`), precisa vir **percent-encoded** — senão
+o erro que aparece é `authentication failed`, que manda procurar no lugar errado.
+
+> **Quando escolher o banco de produção:** se for Supabase com pooler, o Prisma
+> precisa de duas URLs — a *pooled* para a aplicação e uma `directUrl` para as
+> migrações, porque pooler em modo transação não executa migração. E
+> `db.<projeto>.supabase.co` responde só em IPv6, que o runner do GitHub não
+> tem; nesse caso a URL de migração precisa ser a do pooler em modo sessão.
+
+## Integração contínua
+
+`.github/workflows/ci.yml` roda testes, typecheck e build em todo push e pull
+request. No push para `main`, aplica as migrações com `prisma migrate deploy`.
+
+Pull request nunca toca no banco — o autor de um fork não deveria conseguir
+alterar o schema de produção. Defina o segredo `DATABASE_URL` em
+*Settings › Secrets and variables › Actions*.
 
 ## Integrações
 

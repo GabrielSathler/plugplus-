@@ -1,10 +1,12 @@
 // Schema do FinFlow.
 //
-// PROVIDER: SQLite para o protótipo rodar sem infraestrutura. A migracao para
-// Postgres e mecanica — trocar o provider abaixo e, opcionalmente, promover os
-// campos `String` marcados com "// enum:" a enums nativos do Prisma. Nenhuma
-// regra de negocio depende do banco: o motor de dominio vive em
-// packages/shared e recebe objetos puros.
+// PROVIDER: PostgreSQL (Supabase). Nenhuma regra de negocio depende do banco —
+// o motor de dominio vive em packages/shared e recebe objetos puros.
+//
+// Os campos String marcados com "// enum:" continuam String de proposito: os
+// unions vivem em packages/shared/types.ts e sao a fonte da verdade. Promove-los
+// a enum nativo do Postgres e possivel e da checagem no banco, mas passa a
+// exigir migracao a cada valor novo — decisao adiada ate o schema estabilizar.
 //
 // DINHEIRO: todo valor monetario e `Int` em CENTAVOS. Nunca Float.
 // DATAS DE NEGOCIO: `String` no formato YYYY-MM-DD (ver packages/shared/date.ts).
@@ -15,7 +17,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 

@@ -8,16 +8,18 @@
     "apps/*"
   ],
   "scripts": {
-    "setup": "npm install && npm run build:shared && npm run db:reset",
+    "setup": "npm install && npm run build:shared && npm run db:deploy && npm run db:seed",
     "build:shared": "npm run build --workspace @finflow/shared",
     "dev": "npm run build:shared && concurrently -n api,web -c cyan,magenta \"npm:dev:api\" \"npm:dev:web\"",
     "dev:api": "npm run dev --workspace @finflow/api",
     "dev:web": "npm run dev --workspace @finflow/web",
     "build": "npm run build:shared && npm run build --workspace @finflow/api && npm run build --workspace @finflow/web",
-    "db:reset": "npm run db:reset --workspace @finflow/api",
+    "db:reset": "npm run db:reset --workspace @finflow/api && npm run db:seed",
     "db:seed": "npm run db:seed --workspace @finflow/api",
     "test": "npm run test --workspace @finflow/shared",
-    "typecheck": "npm run typecheck --workspaces --if-present"
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "db:deploy": "npm run db:deploy --workspace @finflow/api",
+    "db:migrate": "npm run db:migrate --workspace @finflow/api"
   },
   "devDependencies": {
     "concurrently": "^9.1.2"

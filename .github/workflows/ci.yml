@@ -1,0 +1,87 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  # Um push novo cancela a execução anterior do mesmo branch. Sem isto, dois
+  # pushes seguidos disparam duas migrações concorrentes no mesmo banco.
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verificar:
+    name: Testes e build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # O motor de domínio compila antes de tudo: API e front importam dele, e
+      # um erro aqui apareceria como erro deles, no lugar errado.
+      - name: Compilar o pacote compartilhado
+        run: npm run build:shared
+
+      - name: Gerar o Prisma Client
+        # `migrate deploy` e o build precisam do client; gerar não toca no banco.
+        run: npm run db:generate --workspace @finflow/api
+
+      - name: Testes do motor de domínio
+        run: npm test
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+
+  migrar:
+    name: Aplicar migrações
+    needs: verificar
+    # Só no push para main. Pull request não pode tocar no banco — o autor do
+    # PR não deveria conseguir alterar o schema de produção pelo fork dele.
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Conferir se o segredo existe
+        # Sem isto, a ausência do segredo vira um erro de conexão confuso lá na
+        # frente em vez de uma mensagem que diz o que fazer.
+        run: |
+          if [ -z "${{ secrets.DATABASE_URL }}" ]; then
+            echo "::error::Defina o segredo DATABASE_URL em Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+
+      - name: Migrações pendentes
+        # `migrate status` mostra no log o que vai ser aplicado antes de aplicar.
+        run: npx prisma migrate status --schema apps/api/prisma/schema.prisma || true
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+      - name: Aplicar
+        # `migrate deploy` só aplica migrações já versionadas — nunca gera nova,
+        # nunca apaga dado, nunca pede banco sombra. É o único comando de
+        # migração seguro para rodar sem supervisão.
+        run: npx prisma migrate deploy --schema apps/api/prisma/schema.prisma
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
