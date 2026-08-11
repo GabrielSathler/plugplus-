@@ -1,0 +1,135 @@
+@import 'tailwindcss';
+
+/*
+ * Design system do Cardinal — tokens extraidos dos prototipos.
+ *
+ * DECISOES QUE DEFINEM O VISUAL:
+ *
+ * 1. FUNDO OFF-WHITE QUENTE (#F4F3EF), nao branco nem cinza-azulado. Da a
+ *    superficie de papel que separa o produto de todo dashboard "SaaS azul", e
+ *    faz os cards brancos flutuarem sem precisar de sombra pesada.
+ *
+ * 2. NUMEROS EM MONOESPACADO. Todo valor, data e percentual usa JetBrains Mono
+ *    com `tabular-nums`. Numeros proporcionais desalinham a virgula entre
+ *    linhas e destroem a leitura de uma coluna de dinheiro.
+ *
+ * 3. TEAL COMO UNICO ACENTO. Estado ativo, valores positivos e progresso
+ *    saudavel. Tijolo e ocre sao reservados a estado (negativo/atencao), nunca
+ *    decorativos — assim uma cor quente na tela sempre significa alguma coisa.
+ *
+ * 4. BORDA NO LUGAR DE SOMBRA. Cards usam borda de 1px e sombra quase nula. Em
+ *    uma tela com 8 KPIs lado a lado, sombras somam ruido e nao hierarquia.
+ */
+
+@theme {
+  /* --- Superficies ---------------------------------------------------- */
+  --color-canvas: #f4f3ef;
+  --color-surface: #ffffff;
+  --color-surface-sunken: #faf9f6;
+  --color-ink: #16161a;
+  --color-line: #e7e4dc;
+  --color-line-strong: #d8d4c9;
+
+  /* --- Texto ---------------------------------------------------------- */
+  --color-text: #16171a;
+  --color-text-secondary: #55534e;
+  --color-muted: #8b8983;
+  --color-faint: #a8a59d;
+
+  /* --- Acento --------------------------------------------------------- */
+  --color-teal: #0f8a72;
+  --color-teal-bright: #12a085;
+  --color-teal-soft: #e6f2ee;
+  --color-teal-line: #c5e2d8;
+
+  /* --- Estado (validado: ver scripts/validate_palette.js) -------------- */
+  --color-positive: #0f8a72;
+  --color-negative: #c0453b;
+  --color-warning: #b8863a;
+  --color-positive-soft: #e6f2ee;
+  --color-negative-soft: #fbeceb;
+  --color-warning-soft: #f8f0e2;
+
+  /* --- Categorias: ordem FIXA, nunca ciclada -------------------------- */
+  --color-cat-1: #0f8a72;
+  --color-cat-2: #c0453b;
+  --color-cat-3: #3b6fe0;
+  --color-cat-4: #b8863a;
+  --color-cat-5: #b33c86;
+  --color-cat-6: #5f8c1f;
+  --color-cat-7: #8257e5;
+
+  /* --- Tipografia ------------------------------------------------------ */
+  --font-sans: 'Inter', -apple-system, 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Cascadia Code', Consolas, ui-monospace, monospace;
+
+  /* --- Raios ----------------------------------------------------------- */
+  --radius-card: 12px;
+  --radius-control: 8px;
+}
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    background-color: var(--color-canvas);
+    color: var(--color-text);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 1.5;
+  }
+
+  /* Numeros nunca dancam entre estados de carregamento ou atualizacoes. */
+  .num {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: 'tnum' 1;
+    letter-spacing: -0.01em;
+  }
+
+  ::selection {
+    background: var(--color-teal-soft);
+  }
+
+  /* Foco visivel em tudo que e navegavel por teclado. */
+  :focus-visible {
+    outline: 2px solid var(--color-teal);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  /* Scrollbar discreta para nao competir com o conteudo. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-line-strong) transparent;
+  }
+}
+
+@layer components {
+  .card {
+    background: var(--color-surface);
+    border: 1px solid var(--color-line);
+    border-radius: var(--radius-card);
+  }
+
+  /* Cabecalho de tabela: caixa alta miuda e espacada, peso baixo. */
+  .th {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--color-muted);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

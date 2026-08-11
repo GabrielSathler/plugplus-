@@ -1,0 +1,25 @@
+{
+  // O projeto usa TypeScript 5.9. Duas flags do packages/shared —
+  // `allowImportingTsExtensions` + `rewriteRelativeImportExtensions` — so
+  // existem a partir do 5.7, e o TypeScript que vem embutido no editor pode
+  // ser mais antigo: ele marca o tsconfig.json com erro enquanto a compilacao
+  // pela linha de comando passa limpa.
+  //
+  // Apontar para o TS do workspace acaba com a divergencia. Ao abrir o
+  // projeto, aceite o aviso "Use Workspace Version" (ou rode o comando
+  // "TypeScript: Select TypeScript Version" > "Use Workspace Version").
+  "typescript.tsdk": "node_modules/typescript/lib",
+  "typescript.enablePromptUseWorkspaceTsdk": true,
+
+  "editor.formatOnSave": false,
+  "files.eol": "\n",
+  "search.exclude": {
+    "**/node_modules": true,
+    "**/dist": true,
+    "**/*.db": true
+  },
+  "files.watcherExclude": {
+    "**/node_modules/**": true,
+    "**/dist/**": true
+  }
+}

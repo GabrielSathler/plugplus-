@@ -1,0 +1,20 @@
+{
+  "name": "@finflow/shared",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Tipos e motor de dominio compartilhado entre API e Web",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -p tsconfig.json --watch --preserveWatchOutput",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node --test src/domain/credit-card-cycle.test.ts src/domain/installments.test.ts src/domain/projection.test.ts src/domain/plans.test.ts src/domain/notifications.test.ts"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.3"
+  }
+}

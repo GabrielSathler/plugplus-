@@ -1,0 +1,587 @@
+// Schema do FinFlow.
+//
+// PROVIDER: SQLite para o protótipo rodar sem infraestrutura. A migracao para
+// Postgres e mecanica — trocar o provider abaixo e, opcionalmente, promover os
+// campos `String` marcados com "// enum:" a enums nativos do Prisma. Nenhuma
+// regra de negocio depende do banco: o motor de dominio vive em
+// packages/shared e recebe objetos puros.
+//
+// DINHEIRO: todo valor monetario e `Int` em CENTAVOS. Nunca Float.
+// DATAS DE NEGOCIO: `String` no formato YYYY-MM-DD (ver packages/shared/date.ts).
+//   `DateTime` fica reservado a timestamps tecnicos (createdAt/updatedAt).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Organization {
+  id       String @id @default(cuid())
+  name     String
+  /// Rotulo curto exibido ao lado da marca no header (ex.: "FAMILIA").
+  badge    String @default("PESSOAL")
+  currency String @default("BRL")
+  locale   String @default("pt-BR")
+  timezone String @default("America/Sao_Paulo")
+
+  /// Dia em que o mes financeiro comeca. Base para orcamentos e fechamentos.
+  fiscalMonthStartDay Int    @default(1)
+  /// Horizonte (em meses) aberto por padrao nas telas de projecao.
+  projectionHorizon   Int    @default(6)
+  /// Frequencia de sincronizacao Open Finance, em vezes por dia.
+  autoSyncPerDay      Int    @default(4)
+  /// Preferencia de exportacao exibida em Ajustes.
+  exportPreference    String @default("CSV mensal")
+  /// Meta de comprometimento de renda (%), usada no KPI da visao geral.
+  commitmentTarget    Int    @default(75)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  memberships  Membership[]
+  accounts     Account[]
+  creditCards  CreditCard[]
+  categories   Category[]
+  transactions Transaction[]
+  invoices     Invoice[]
+  recurrences  RecurringRule[]
+  budgets      Budget[]
+  scenarios    Scenario[]
+  rules        CategorizationRule[]
+  connections  BankConnection[]
+  goals        Goal[]
+  spendingPlans SpendingPlan[]
+  notificationPreferences NotificationPreference[]
+  notificationDeliveries  NotificationDelivery[]
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  passwordHash String
+  /// Iniciais exibidas no avatar quando nao ha imagem.
+  initials     String
+  avatarUrl    String?
+  createdAt    DateTime @default(now())
+
+  memberships Membership[]
+  deviceTokens            DeviceToken[]
+  notificationPreferences NotificationPreference[]
+  notificationDeliveries  NotificationDelivery[]
+}
+
+model Membership {
+  id             String @id @default(cuid())
+  userId         String
+  organizationId String
+  /// enum: OWNER | ADMIN | EDITOR | VIEWER
+  role           String @default("EDITOR")
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, organizationId])
+  @@index([organizationId])
+}
+
+model Account {
+  id             String  @id @default(cuid())
+  organizationId String
+  name           String
+  /// enum: CHECKING | SAVINGS | INVESTMENT | CASH | WALLET
+  type           String  @default("CHECKING")
+  institution    String?
+  /// Numero curto exibido na coluna "Origem" das transacoes (ex.: "0192").
+  accountNumber  String?
+  currency       String  @default("BRL")
+  openingBalance Int     @default(0)
+  currentBalance Int     @default(0)
+  color          String  @default("#0F8A72")
+  isActive       Boolean @default(true)
+  /// Contas de investimento ficam fora do saldo consolidado por padrao.
+  includeInTotals Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization        Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  transactions        Transaction[]
+  transfersReceived   Transaction[]   @relation("TransferTarget")
+  recurrences         RecurringRule[]
+  cardsPaidByAccount  CreditCard[]
+  scenarioItems       ScenarioItem[]
+  planItems           SpendingPlanItem[]
+
+  @@index([organizationId])
+}
+
+model CreditCard {
+  id             String  @id @default(cuid())
+  organizationId String
+  name           String
+  /// enum: VISA | MASTERCARD | ELO | AMEX | HIPERCARD | OTHER
+  brand          String  @default("VISA")
+  lastFour       String?
+  institution    String?
+  limitAmount    Int     @default(0)
+
+  /// Dia do fechamento do ciclo (1-31, com clamp em meses curtos).
+  closingDay Int
+  /// Dia do vencimento da fatura (1-31).
+  dueDay     Int
+  /// Compra feita NO dia do fechamento entra na fatura que fecha nesse dia?
+  /// Padrao `false`: a maioria dos emissores joga para a fatura seguinte.
+  closingDayInclusive Boolean @default(false)
+
+  /// Conta debitada no vencimento.
+  paymentAccountId String?
+  color            String  @default("#16161A")
+  isActive         Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  paymentAccount Account?        @relation(fields: [paymentAccountId], references: [id], onDelete: SetNull)
+  transactions   Transaction[]
+  invoices       Invoice[]
+  recurrences    RecurringRule[]
+  scenarioItems  ScenarioItem[]
+  planItems      SpendingPlanItem[]
+
+  @@index([organizationId])
+}
+
+model Category {
+  id             String  @id @default(cuid())
+  organizationId String
+  name           String
+  /// enum: INCOME | EXPENSE
+  kind           String  @default("EXPENSE")
+  color          String  @default("#8C8A85")
+  /// Nome do icone lucide-react resolvido no front.
+  icon           String?
+  parentId       String?
+  /// Encargos, juros e anuidade — isolados na composicao da fatura.
+  isFee          Boolean @default(false)
+  sortOrder      Int     @default(0)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  parent       Category?    @relation("CategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children     Category[]   @relation("CategoryTree")
+
+  transactions  Transaction[]
+  budgets       Budget[]
+  recurrences   RecurringRule[]
+  rules         CategorizationRule[]
+  scenarioItems ScenarioItem[]
+  planItems     SpendingPlanItem[]
+
+  @@index([organizationId])
+}
+
+model Transaction {
+  id             String  @id @default(cuid())
+  organizationId String
+  description    String
+  merchant       String?
+  /// Sempre POSITIVO em centavos. O sinal vem de `type`.
+  amount         Int
+  /// enum: INCOME | EXPENSE | TRANSFER
+  type           String
+  /// enum: CREDIT | DEBIT | PIX | BOLETO | CASH | TRANSFER | AUTO_DEBIT
+  paymentMethod  String  @default("PIX")
+  /// Data da compra / competencia, YYYY-MM-DD.
+  date           String
+
+  accountId    String?
+  creditCardId String?
+  categoryId   String?
+  /// Conta destino, quando `type = TRANSFER`.
+  transferAccountId String?
+
+  /// enum: SCHEDULED | PENDING | POSTED | RECONCILED
+  status String @default("POSTED")
+  /// enum: MANUAL | RECURRING | OPEN_FINANCE | IMPORT_OFX | IMPORT_CSV | SCENARIO
+  source String @default("MANUAL")
+
+  /// Parcelamento. `installmentNumber` nulo com `installmentTotal > 1` significa
+  /// compra ainda nao expandida — o motor abre as parcelas na projecao.
+  installmentNumber  Int?
+  installmentTotal   Int?
+  installmentGroupId String?
+
+  recurringRuleId String?
+  /// Fatura em que a transacao caiu, quando ja materializada.
+  invoiceId       String?
+
+  notes String?
+  /// Array JSON serializado — SQLite nao tem tipo lista.
+  tags  String  @default("[]")
+
+  /// Id no provedor externo, para deduplicar sincronizacoes repetidas.
+  externalId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization    Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  account         Account?       @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  transferAccount Account?       @relation("TransferTarget", fields: [transferAccountId], references: [id], onDelete: SetNull)
+  creditCard      CreditCard?    @relation(fields: [creditCardId], references: [id], onDelete: Cascade)
+  category        Category?      @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  recurringRule   RecurringRule? @relation(fields: [recurringRuleId], references: [id], onDelete: SetNull)
+  invoice         Invoice?       @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
+
+  @@unique([organizationId, externalId])
+  @@index([organizationId, date])
+  @@index([organizationId, creditCardId])
+  @@index([installmentGroupId])
+}
+
+model Invoice {
+  id             String @id @default(cuid())
+  organizationId String
+  creditCardId   String
+  /// Competencia = mes do VENCIMENTO (YYYY-MM). Ver ADR em credit-card-cycle.ts.
+  referenceMonth String
+  closingDate    String
+  dueDate        String
+  /// enum: OPEN | CLOSED | PAID | OVERDUE | PROJECTED
+  status         String @default("OPEN")
+  /// Total materializado no fechamento. Antes disso o valor vem da projecao.
+  total          Int    @default(0)
+  paidAmount     Int    @default(0)
+  paidAt         String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  creditCard   CreditCard    @relation(fields: [creditCardId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+
+  @@unique([creditCardId, referenceMonth])
+  @@index([organizationId])
+}
+
+model RecurringRule {
+  id             String  @id @default(cuid())
+  organizationId String
+  description    String
+  amount         Int
+  /// enum: INCOME | EXPENSE
+  type           String
+  /// enum: WEEKLY | MONTHLY | BIMONTHLY | QUARTERLY | SEMIANNUAL | YEARLY
+  frequency      String  @default("MONTHLY")
+  dayOfMonth     Int?
+  /// 0 = domingo. Usado apenas em frequencia semanal.
+  weekday        Int?
+  startDate      String
+  endDate        String?
+
+  categoryId    String?
+  accountId     String?
+  creditCardId  String?
+  paymentMethod String  @default("AUTO_DEBIT")
+  isActive      Boolean @default(true)
+  /// Rotulo da coluna de origem em "Recorrencias reconhecidas".
+  label         String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  category     Category?     @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  account      Account?      @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  creditCard   CreditCard?   @relation(fields: [creditCardId], references: [id], onDelete: SetNull)
+  transactions Transaction[]
+
+  @@index([organizationId])
+}
+
+model Budget {
+  id             String  @id @default(cuid())
+  organizationId String
+  categoryId     String
+  /// `null` = orcamento recorrente, valido para todo mes.
+  month          String?
+  limitAmount    Int
+  /// Percentual de uso a partir do qual o orcamento entra em "Atencao".
+  alertThreshold Int     @default(80)
+  /// Sobra do mes acumula para o mes seguinte.
+  rollover       Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  category     Category     @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, categoryId, month])
+  @@index([organizationId])
+}
+
+/// Simulacao "e se" sobreposta a projecao sem sujar os lancamentos reais.
+model Scenario {
+  id             String  @id @default(cuid())
+  organizationId String
+  name           String
+  description    String?
+  isActive       Boolean @default(false)
+  color          String  @default("#B8863A")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  items        ScenarioItem[]
+
+  @@index([organizationId])
+}
+
+model ScenarioItem {
+  id         String @id @default(cuid())
+  scenarioId String
+  /// enum: ONE_OFF | RECURRING | INSTALLMENT
+  kind       String @default("ONE_OFF")
+  description String
+  amount     Int
+  /// enum: INCOME | EXPENSE
+  type       String @default("EXPENSE")
+  startDate  String
+  /// Parcelas (INSTALLMENT) ou meses de vigencia (RECURRING).
+  months     Int?
+
+  categoryId   String?
+  accountId    String?
+  creditCardId String?
+
+  scenario   Scenario    @relation(fields: [scenarioId], references: [id], onDelete: Cascade)
+  category   Category?   @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  account    Account?    @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  creditCard CreditCard? @relation(fields: [creditCardId], references: [id], onDelete: SetNull)
+
+  @@index([scenarioId])
+}
+
+/// Gasto programado: um evento com varias linhas ("fim de semana", "viagem").
+///
+/// Diferente de Scenario, entra no BASELINE da projecao — e intencao assumida,
+/// nao hipotese. Diferente de uma Transaction agendada, e estimativa e vira
+/// conciliado depois contra o que de fato aconteceu.
+model SpendingPlan {
+  id             String  @id @default(cuid())
+  organizationId String
+  name           String
+  startDate      String
+  endDate        String
+  /// enum: PLANNED | CLOSED | CANCELLED
+  status         String  @default("PLANNED")
+  color          String  @default("#8257E5")
+  notes          String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  items        SpendingPlanItem[]
+
+  @@index([organizationId, startDate])
+}
+
+model SpendingPlanItem {
+  id          String @id @default(cuid())
+  planId      String
+  description String
+  /// Valor ESTIMADO em centavos.
+  amount      Int
+
+  categoryId    String?
+  accountId     String?
+  creditCardId  String?
+  paymentMethod String  @default("PIX")
+  /// `> 1` espalha o gasto planejado pelas faturas seguintes.
+  installments  Int     @default(1)
+  /// Data dentro do periodo. Nulo usa o inicio do plano.
+  date          String?
+
+  /// enum: PENDING | DONE | SKIPPED
+  status String @default("PENDING")
+  /// Lancamento real que confirmou este item.
+  matchedTransactionId String?
+
+  sortOrder Int @default(0)
+
+  plan       SpendingPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  category   Category?    @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  account    Account?     @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  creditCard CreditCard?  @relation(fields: [creditCardId], references: [id], onDelete: SetNull)
+
+  @@index([planId])
+}
+
+/// Categorizacao automatica de lancamentos importados.
+model CategorizationRule {
+  id             String  @id @default(cuid())
+  organizationId String
+  name           String
+  /// enum: DESCRIPTION | MERCHANT
+  matchField     String  @default("DESCRIPTION")
+  /// enum: CONTAINS | EQUALS | STARTS_WITH | REGEX
+  matchType      String  @default("CONTAINS")
+  pattern        String
+  categoryId     String
+  /// Menor valor tem prioridade. A primeira regra que casa vence.
+  priority       Int     @default(100)
+  isActive       Boolean @default(true)
+
+  createdAt DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  category     Category     @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+}
+
+/// Preferencias de notificacao, por usuario dentro da organizacao.
+model NotificationPreference {
+  id             String @id @default(cuid())
+  userId         String
+  organizationId String
+
+  pushEnabled  Boolean @default(true)
+  emailEnabled Boolean @default(true)
+  /// enum: INFO | WARNING | CRITICAL — severidade minima que dispara aviso.
+  minSeverity  String  @default("WARNING")
+  /// enum: IMMEDIATE | DAILY_DIGEST
+  mode         String  @default("IMMEDIATE")
+
+  /// `HH:MM` no fuso do usuario. Nulo desliga o silencio noturno.
+  quietHoursStart String? @default("22:00")
+  quietHoursEnd   String? @default("07:00")
+  /// Hora do dia em que o resumo diario sai.
+  digestHour      Int     @default(8)
+  /// Horas ate relembrar um alerta ainda ativo. `0` desliga.
+  reminderAfterHours Int  @default(24)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, organizationId])
+}
+
+/// Token FCM de um aparelho. Um usuario tem varios (celular, tablet, web).
+model DeviceToken {
+  id     String @id @default(cuid())
+  userId String
+  /// Registration token devolvido pelo SDK do Firebase no cliente.
+  token  String @unique
+  /// enum: ANDROID | IOS | WEB
+  platform String @default("WEB")
+  label    String?
+
+  /// Desativado quando o FCM responde UNREGISTERED — token morto nao deve ser
+  /// tentado de novo, e cada tentativa conta na cota do projeto.
+  isActive Boolean @default(true)
+  lastUsedAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isActive])
+}
+
+/// Registro de entrega de um aviso.
+///
+/// O ALERTA continua sendo derivado do estado e nunca gravado; o que se
+/// persiste aqui e a ENTREGA, indexada pela chave deterministica do alerta.
+/// E isto que responde "ja avisei esta pessoa sobre isto?" sem transformar
+/// alerta em linha de tabela que envelhece.
+model NotificationDelivery {
+  id             String @id @default(cuid())
+  organizationId String
+  userId         String
+
+  /// Chave deterministica do alerta (ex.: `budget-exceeded-<categoryId>`).
+  alertKey String
+  /// enum: PUSH | EMAIL
+  channel  String
+  /// Severidade no momento do envio — base para detectar escalada.
+  severity String
+  /// enum: SENT | FAILED | SUPPRESSED
+  status   String @default("SENT")
+  /// Motivo do envio: FIRST_TIME | ESCALATED | RECURRED | REMINDER
+  reason   String
+
+  title String
+  body  String
+
+  /// Id da mensagem no provedor, para rastrear entrega depois.
+  providerMessageId String?
+  error             String?
+
+  sentAt DateTime @default(now())
+  /// Preenchido quando o alerta deixou de existir. Uma entrega resolvida
+  /// libera o proximo envio — e assim que "sumiu e voltou" volta a avisar.
+  resolvedAt DateTime?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, alertKey])
+  @@index([userId, sentAt])
+}
+
+/// Vinculo com instituicao financeira via agregador Open Finance.
+model BankConnection {
+  id             String  @id @default(cuid())
+  organizationId String
+  /// enum: PLUGGY | BELVO | KLAVI | MANUAL_OFX
+  provider       String
+  institutionName String
+  /// enum: CONNECTED | SYNCING | NEEDS_ACTION | CONSENT_EXPIRED | ERROR | DISCONNECTED
+  status         String  @default("CONNECTED")
+  /// Identificador do item/link no provedor.
+  externalItemId String?
+  lastSyncAt     DateTime?
+  /// Prazo do consentimento informado pelo provider. NULO e valido: desde a
+  /// Resolucao Conjunta 7/2023 o prazo e negociado com o cliente e pode ser
+  /// indeterminado. O cliente pode revogar a qualquer momento, com ou sem data.
+  consentExpiresAt String?
+  accountsLinked Int     @default(0)
+  lastError      String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+}
+
+model Goal {
+  id             String  @id @default(cuid())
+  organizationId String
+  name           String
+  targetAmount   Int
+  currentAmount  Int     @default(0)
+  targetDate     String?
+  color          String  @default("#0F8A72")
+  icon           String?
+
+  createdAt DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+}

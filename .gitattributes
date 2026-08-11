@@ -1,0 +1,18 @@
+# Normaliza a quebra de linha no repositório para LF, independente do sistema de
+# quem commita. Sem isto, um checkout no Windows reescreve tudo com CRLF e o
+# próximo diff aparece com o arquivo inteiro alterado, escondendo a mudança real.
+* text=auto eol=lf
+
+# Binários nunca devem ser normalizados — a conversão corrompe o arquivo.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.woff binary
+*.woff2 binary
+*.db binary
+
+# Gerado por ferramenta: some da revisão de código e não conta como diff.
+package-lock.json linguist-generated=true diff=none
