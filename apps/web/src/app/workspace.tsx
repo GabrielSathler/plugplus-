@@ -1,25 +1,27 @@
-import { useQuery } from '@tanstack/react-query';
 import { createContext, useContext, useMemo, useState, type ReactNode } from 'react';
 import { addMonthsToYearMonth, today as todayIn, toYearMonth, type YearMonth } from '@finflow/shared';
-import { api } from '../lib/api';
+import { useAuth } from './auth';
 import type { Session } from '../lib/types';
 
 /**
- * Estado global do workspace: sessao e a COMPETENCIA selecionada.
+ * Estado do workspace: a COMPETÊNCIA selecionada no header.
  *
- * O mes vive aqui, e nao em cada tela, porque o seletor do header e global: o
- * usuario escolhe "Agosto" uma vez e navega entre Visao geral, Cartao e
- * Projecoes sem reescolher. Guardar o mes por tela quebraria essa continuidade,
- * que e o principal gesto de navegacao do produto.
+ * O mês vive aqui, e não em cada tela, porque o seletor é global: o usuário
+ * escolhe "agosto" uma vez e navega entre Visão geral, Cartão e Projeções sem
+ * reescolher. Guardar o mês por tela quebraria essa continuidade, que é o
+ * principal gesto de navegação do produto.
+ *
+ * A SESSÃO vem do AuthProvider, não de uma busca própria: duas fontes para o
+ * mesmo dado divergem no instante em que uma atualiza e a outra não.
  */
 
 interface WorkspaceValue {
-  session: Session | undefined;
+  session: Session | null;
   isLoading: boolean;
   month: YearMonth;
   setMonth: (month: YearMonth) => void;
   shiftMonth: (delta: number) => void;
-  /** Mes real de hoje — o seletor nao deve ir muito alem dele. */
+  /** Mês real de hoje — o seletor não deve ir muito além dele. */
   currentMonth: YearMonth;
 }
 
@@ -28,23 +30,18 @@ const WorkspaceContext = createContext<WorkspaceValue | null>(null);
 export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const currentMonth = useMemo(() => toYearMonth(todayIn()) as YearMonth, []);
   const [month, setMonth] = useState<YearMonth>(currentMonth);
-
-  const { data: session, isLoading } = useQuery({
-    queryKey: ['session'],
-    queryFn: () => api.get<Session>('/auth/me'),
-    staleTime: 5 * 60 * 1000,
-  });
+  const { session, status } = useAuth();
 
   const value = useMemo<WorkspaceValue>(
     () => ({
       session,
-      isLoading,
+      isLoading: status === 'checking',
       month,
       setMonth,
       shiftMonth: (delta: number) => setMonth((current) => addMonthsToYearMonth(current, delta)),
       currentMonth,
     }),
-    [session, isLoading, month, currentMonth],
+    [session, status, month, currentMonth],
   );
 
   return <WorkspaceContext.Provider value={value}>{children}</WorkspaceContext.Provider>;

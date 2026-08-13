@@ -16,12 +16,25 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
-import { IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
+import { Type } from 'class-transformer';
+import {
+  IsArray,
+  IsBoolean,
+  IsIn,
+  IsInt,
+  IsOptional,
+  IsString,
+  MaxLength,
+  Min,
+  ValidateNested,
+} from 'class-validator';
 import { addDays, today as todayIn } from '@finflow/shared';
 import { Ctx, Public, type RequestContext } from '../auth/auth.types';
 import { PrismaService } from '../prisma/prisma.service';
 import { AGGREGATOR_PORT, type AggregatorPort } from './aggregator.port';
 import { parseCsv, parseOfx } from './ofx.parser';
+import { StatementService } from './statements/statement.service';
+import { StatementsController } from './statements/statements.controller';
 import { PluggyProvider } from './providers/pluggy.provider';
 import { SandboxAggregatorProvider } from './providers/sandbox.provider';
 
@@ -245,7 +258,7 @@ export class IntegrationsService {
             type: tx.type,
             date: tx.date,
           }))
-        : parseCsv(dto.content).map((tx, index) => ({
+        : parseCsv(dto.content).rows.map((tx, index) => ({
             externalId: `csv:${dto.accountId}:${tx.date}:${tx.amount}:${index}`,
             description: tx.description,
             amount: tx.amount,
@@ -486,9 +499,10 @@ export class IntegrationsController {
  * forca o sandbox mesmo com credencial presente, util para desenvolver offline.
  */
 @Module({
-  controllers: [IntegrationsController],
+  controllers: [IntegrationsController, StatementsController],
   providers: [
     IntegrationsService,
+    StatementService,
     PluggyProvider,
     SandboxAggregatorProvider,
     {

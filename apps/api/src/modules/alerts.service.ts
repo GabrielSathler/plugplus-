@@ -29,8 +29,17 @@ export class AlertsService {
     private readonly prisma: PrismaService,
   ) {}
 
-  async list(organizationId: string, month?: string): Promise<Alert[]> {
-    const snapshot = await this.snapshots.load(organizationId);
+  /**
+   * @param preloaded snapshot ja carregado por quem chamou. Sem isto, a Visao
+   *   geral carregava o estado da organizacao DUAS vezes na mesma requisicao —
+   *   9 consultas desperdicadas, cada uma pagando a latencia ate o banco.
+   */
+  async list(
+    organizationId: string,
+    month?: string,
+    preloaded?: Awaited<ReturnType<SnapshotService['load']>>,
+  ): Promise<Alert[]> {
+    const snapshot = preloaded ?? (await this.snapshots.load(organizationId));
     const target = (month ?? toYearMonth(snapshot.today)) as YearMonth;
     const alerts: Alert[] = [];
 
@@ -111,7 +120,16 @@ export class AlertsService {
     /* --- Comprometimento de renda acima da meta --------------------------- */
 
     const current = byMonth.get(target);
-    if (current && current.income > 0) {
+    /*
+     * O piso de renda existe para o alerta nao virar ruido.
+     *
+     * Com R$ 1 de renda lancada e R$ 250 de gasto, a razao da 25.000% e o
+     * aviso subia como CRITICO — por um numero que so existe porque a renda
+     * ainda nao foi registrada. Alerta que dispara sem causa real e o caminho
+     * mais curto para o usuario parar de ler alertas.
+     */
+    const MIN_INCOME_FOR_COMMITMENT = 10_000; // R$ 100,00
+    if (current && current.income >= MIN_INCOME_FOR_COMMITMENT) {
       const commitment = percentOf(current.expenses, current.income);
       const goal = snapshot.organization.commitmentTarget;
       if (commitment > goal) {

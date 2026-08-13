@@ -8,6 +8,7 @@ import type {
   BudgetStatus,
   CategorySpend,
   DashboardMetrics,
+  Frequency,
   MonthProjection,
 } from '../types.ts';
 
@@ -94,8 +95,17 @@ export function computeDashboardMetrics(input: DashboardInput): DashboardMetrics
 
   /* --- Comprometimento da renda ------------------------------------------ */
 
-  const commitment = (target?: MonthProjection): number => {
-    if (!target || target.income === 0) return 0;
+  /**
+   * `null` quando nao ha renda no mes.
+   *
+   * Uma razao com denominador perto de zero nao e uma metrica, e ruido: R$ 250
+   * de gasto sobre R$ 1 de renda devolve 25.000%, que e aritmeticamente exato e
+   * nao informa nada. Pior, dispara alerta critico por um numero que so existe
+   * porque ainda nao ha renda lancada. Sem renda conhecida a pergunta "quanto
+   * da sua renda esta comprometido" simplesmente nao tem resposta.
+   */
+  const commitment = (target?: MonthProjection): number | null => {
+    if (!target || target.income <= 0) return null;
     return percentOf(target.expenses, target.income);
   };
   const incomeCommitment = commitment(current);
@@ -103,16 +113,28 @@ export function computeDashboardMetrics(input: DashboardInput): DashboardMetrics
 
   /* --- Reserva de emergencia --------------------------------------------- */
 
-  // Custo fixo medio = media das saidas dos meses ja projetados no horizonte.
-  // Usar a media (e nao o mes corrente) evita que um mes atipico — IPVA, viagem
-  // — despenque a reserva e dispare um alerta falso.
-  const horizonMonths = projection.months.slice(1, horizon + 1);
-  const averageFixedCost =
-    horizonMonths.length === 0
-      ? 0
-      : horizonMonths.reduce((sum, m) => sum + m.expenses, 0) / horizonMonths.length;
+  /**
+   * Custo fixo = o que se REPETE, e so isso.
+   *
+   * A versao anterior usava a media de todas as saidas projetadas, e isso
+   * estava errado no conceito: um jantar programado de R$ 250, diluido pelo
+   * horizonte, virava "custo fixo mensal de R$ 20,80" e a reserva aparecia
+   * como 168 meses. O rotulo do tile promete "cobertura de custo fixo" — o
+   * denominador tem que ser aquilo que voce vai pagar TODO mes se parar de
+   * ganhar: aluguel, escola, plano de saude, assinatura.
+   *
+   * Parcela em curso fica de fora de proposito: ela acaba. Gasto avulso e
+   * plano tambem — sao escolha, e quem perde a renda deixa de fazer.
+   */
+  const averageFixedCost = input.recurrences
+    .filter((rule) => rule.isActive && rule.type === 'EXPENSE')
+    .reduce((sum, rule) => sum + monthlyEquivalent(rule.amount, rule.frequency), 0);
 
-  const runway = averageFixedCost === 0 ? 0 : currentBalance / averageFixedCost;
+  // `null` quando ainda nao ha custo fixo conhecido. Zero seria uma mentira
+  // perigosa: sem despesa recorrente a reserva nao acaba em zero mes, ela dura
+  // indefinidamente. O tile mostra "—" — "ainda nao da para calcular", nao
+  // "voce esta quebrado".
+  const runway = averageFixedCost === 0 ? null : currentBalance / averageFixedCost;
   const previousRunway =
     averageFixedCost === 0 || !previous
       ? null
@@ -147,14 +169,21 @@ export function computeDashboardMetrics(input: DashboardInput): DashboardMetrics
     spendDelta: (current?.expenses ?? 0) - (previous?.expenses ?? 0),
 
     incomeCommitment,
-    incomeCommitmentDelta: previous ? incomeCommitment - previousCommitment : null,
+    // O delta só existe quando os DOIS meses têm renda. Comparar contra um mês
+    // sem renda produziria uma variação de milhares de pontos percentuais que
+    // não reflete mudança nenhuma no comportamento.
+    incomeCommitmentDelta:
+      incomeCommitment === null || previousCommitment === null
+        ? null
+        : incomeCommitment - previousCommitment,
 
     futureInstallmentsTotal: futureInstallments.total,
     futureInstallmentsCount: futureInstallments.purchaseCount,
     futureInstallmentsLastMonth: futureInstallments.lastMonth,
 
     emergencyRunwayMonths: runway,
-    emergencyRunwayDelta: previousRunway === null ? null : runway - previousRunway,
+    emergencyRunwayDelta:
+      runway === null || previousRunway === null ? null : runway - previousRunway,
   };
 }
 
@@ -261,4 +290,29 @@ export function buildIncomeExpenseSeries(
     expenses: month.expenses,
     isProjected: month.month > currentMonth,
   }));
+}
+
+/**
+ * Converte um valor recorrente para o equivalente mensal.
+ *
+ * Anuidade de R$ 1.200 nao e um custo fixo de R$ 1.200/mes — sao R$ 100. Sem
+ * essa normalizacao, uma unica despesa anual esmagaria a reserva de emergencia
+ * e dispararia alerta todo mes.
+ */
+function monthlyEquivalent(amount: Cents, frequency: Frequency): number {
+  switch (frequency) {
+    case 'WEEKLY':
+      // 52 semanas em 12 meses — nao 4, que subestimaria em ~8%.
+      return (amount * 52) / 12;
+    case 'MONTHLY':
+      return amount;
+    case 'BIMONTHLY':
+      return amount / 2;
+    case 'QUARTERLY':
+      return amount / 3;
+    case 'SEMIANNUAL':
+      return amount / 6;
+    case 'YEARLY':
+      return amount / 12;
+  }
 }

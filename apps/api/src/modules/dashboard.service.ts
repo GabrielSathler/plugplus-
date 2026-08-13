@@ -54,7 +54,7 @@ export class DashboardService {
           budgets: snapshot.budgets,
         }),
       ),
-      this.alerts.list(organizationId, target),
+      this.alerts.list(organizationId, target, snapshot),
     ]);
 
     return {

@@ -156,9 +156,15 @@ export interface CsvTransaction {
  * CSV com cabecalho, aceitando `,` ou `;` como separador (Excel pt-BR usa `;`).
  * Colunas reconhecidas: data/date, descricao/description/historico, valor/amount.
  */
-export function parseCsv(raw: string): CsvTransaction[] {
+export interface CsvResult {
+  rows: CsvTransaction[];
+  /** Linhas descartadas, com o motivo — a pessoa precisa saber o que ficou de fora. */
+  rejected: { line: number; reason: string }[];
+}
+
+export function parseCsv(raw: string): CsvResult {
   const lines = raw.split(/\r?\n/).filter((line) => line.trim().length > 0);
-  if (lines.length < 2) return [];
+  if (lines.length < 2) return { rows: [], rejected: [] };
 
   const separator = (lines[0].match(/;/g)?.length ?? 0) > (lines[0].match(/,/g)?.length ?? 0) ? ';' : ',';
   const header = lines[0].split(separator).map((h) => normalizeHeader(h));
@@ -174,17 +180,31 @@ export function parseCsv(raw: string): CsvTransaction[] {
   }
 
   const rows: CsvTransaction[] = [];
-  for (const line of lines.slice(1)) {
-    const cells = line.split(separator);
-    const amount = parseAmount(cells[amountIndex] ?? '0');
-    rows.push({
-      date: normalizeDate(cells[dateIndex] ?? ''),
-      description: (cells[descriptionIndex] ?? 'Lancamento').trim().replace(/^"|"$/g, ''),
-      amount: Math.abs(amount),
-      type: amount >= 0 ? 'INCOME' : 'EXPENSE',
-    });
-  }
-  return rows;
+  const rejected: { line: number; reason: string }[] = [];
+
+  lines.slice(1).forEach((line, index) => {
+    // Uma linha torta NAO pode derrubar o arquivo inteiro. Extrato real vem
+    // com rodape, subtotal e linha em branco no meio; lancar aqui faria o
+    // usuario perder 8.999 lancamentos bons por causa de um ruim, sem nem
+    // saber qual era.
+    try {
+      const cells = line.split(separator);
+      const amount = parseAmount(cells[amountIndex] ?? '0');
+      rows.push({
+        date: normalizeDate(cells[dateIndex] ?? ''),
+        description: (cells[descriptionIndex] ?? 'Lancamento').trim().replace(/^"|"$/g, ''),
+        amount: Math.abs(amount),
+        type: amount >= 0 ? 'INCOME' : 'EXPENSE',
+      });
+    } catch (error) {
+      rejected.push({
+        line: index + 2, // +1 pelo cabecalho, +1 porque planilha conta de 1
+        reason: error instanceof Error ? error.message : 'linha invalida',
+      });
+    }
+  });
+
+  return { rows, rejected };
 }
 
 function normalizeHeader(value: string): string {

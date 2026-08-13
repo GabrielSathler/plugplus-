@@ -1,16 +1,28 @@
 import 'reflect-metadata';
 import { Logger, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import cookieParser from 'cookie-parser';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { PrismaExceptionFilter } from './common/prisma-exception.filter';
 
 async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create(AppModule, { bufferLogs: false });
+  // Tipar como aplicacao Express da acesso a `set('trust proxy')`, que o
+  // `INestApplication` generico nao expoe.
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, { bufferLogs: false });
 
   app.setGlobalPrefix('api');
+
+  // O refresh token viaja em cookie httpOnly; sem o parser ele nao e lido.
+  app.use(cookieParser());
+
+  // Necessario para `request.ip` refletir o cliente real atras de proxy — sem
+  // isso o limite de taxa contaria todo mundo como um IP so e um unico
+  // atacante bloquearia a aplicacao inteira.
+  app.set('trust proxy', 1);
   app.enableCors({
-    origin: process.env.CORS_ORIGIN?.split(',') ?? ['http://localhost:5173'],
+    origin: process.env.CORS_ORIGIN?.split(',') ?? ['http://localhost:5273'],
     credentials: true,
   });
 

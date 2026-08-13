@@ -1,6 +1,9 @@
 import { useQuery } from '@tanstack/react-query';
+import { Plus } from 'lucide-react';
+import { useState } from 'react';
 import { useWorkspace } from '../app/workspace';
-import { Badge, Card, EmptyState, Progress, Skeleton, type Tone } from '../components/ui';
+import { BudgetForm } from '../components/forms/BudgetForm';
+import { Badge, Button, Card, EmptyState, Progress, Skeleton, type Tone } from '../components/ui';
 import { api } from '../lib/api';
 import { money, percentWhole } from '../lib/format';
 import type { BudgetsResponse, CategorySpend } from '../lib/types';
@@ -19,6 +22,7 @@ const STATUS_TONE: Record<string, Tone> = {
 
 export function BudgetsPage() {
   const { month } = useWorkspace();
+  const [creating, setCreating] = useState(false);
   const { data, isLoading } = useQuery({
     queryKey: ['budgets', month],
     queryFn: () => api.get<BudgetsResponse>('/budgets', { month }),
@@ -36,22 +40,43 @@ export function BudgetsPage() {
 
   if (data.items.length === 0) {
     return (
-      <Card>
-        <EmptyState
-          title="Nenhum orcamento definido"
-          description="Defina um limite por categoria para acompanhar o consumo do mes."
-        />
-      </Card>
+      <>
+        <Card>
+          <EmptyState
+            title="Nenhum orcamento definido"
+            description="Defina um limite por categoria e o Cardinal avisa antes de estourar, nao depois."
+            action={
+              <Button variant="primary" onClick={() => setCreating(true)}>
+                <Plus className="size-3.5" />
+                Criar orcamento
+              </Button>
+            }
+          />
+        </Card>
+        <BudgetForm open={creating} onClose={() => setCreating(false)} month={month} />
+      </>
     );
   }
 
   return (
     <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <p className="num text-[12px] text-[var(--color-muted)]">
+          {money(data.totals.spent)} de {money(data.totals.limit)} usados no mes
+        </p>
+        <Button size="sm" onClick={() => setCreating(true)}>
+          <Plus className="size-3.5" />
+          Novo orcamento
+        </Button>
+      </div>
+
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {data.items.map((row) => (
           <BudgetCard key={row.categoryId} row={row} />
         ))}
       </div>
+
+      <BudgetForm open={creating} onClose={() => setCreating(false)} month={month} />
 
       {data.unbudgeted.length > 0 && (
         <Card>

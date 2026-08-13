@@ -3,12 +3,15 @@ import {
   Calendar,
   ChevronLeft,
   ChevronRight,
+  LogOut,
   Plus,
+  Settings,
   TrendingUp,
 } from 'lucide-react';
 import { useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { monthLong } from '../lib/format';
+import { useAuth } from '../app/auth';
 import { useWorkspace } from '../app/workspace';
 import { NewTransactionDialog } from './NewTransactionDialog';
 
@@ -78,12 +81,7 @@ export function AppShell() {
               Novo lancamento
             </button>
 
-            <span
-              className="grid size-8 place-items-center rounded-full bg-[var(--color-surface-sunken)] text-[11px] font-semibold text-[var(--color-text-secondary)]"
-              title={session?.user.name}
-            >
-              {session?.user.initials ?? '··'}
-            </span>
+            <UserMenu />
           </div>
         </div>
 
@@ -171,6 +169,71 @@ function MonthPicker({
       >
         <ChevronRight className="size-4" />
       </button>
+    </div>
+  );
+}
+
+/**
+ * Avatar com menu de conta.
+ *
+ * O botao de sair precisa estar sempre a um clique: quem usa em maquina
+ * compartilhada tem que conseguir encerrar a sessao sem procurar.
+ */
+function UserMenu() {
+  const { session, logout } = useAuth();
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        title={session?.user.name}
+        className="grid size-8 place-items-center rounded-full bg-[var(--color-surface-sunken)] text-[11px] font-semibold text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-line)]"
+      >
+        {session?.user.initials ?? '··'}
+      </button>
+
+      {open && (
+        <>
+          {/* Camada invisivel que fecha o menu ao clicar fora, sem listener global. */}
+          <button
+            type="button"
+            aria-label="Fechar menu"
+            className="fixed inset-0 z-40 cursor-default"
+            onClick={() => setOpen(false)}
+          />
+          <div
+            role="menu"
+            className="card absolute right-0 z-50 mt-2 w-56 p-1.5 shadow-lg"
+          >
+            <div className="border-b border-[var(--color-line)] px-2.5 py-2">
+              <p className="truncate text-[13px] font-medium">{session?.user.name}</p>
+              <p className="truncate text-[11px] text-[var(--color-muted)]">
+                {session?.user.email}
+              </p>
+            </div>
+            <NavLink
+              to="/ajustes"
+              onClick={() => setOpen(false)}
+              className="mt-1 flex items-center gap-2 rounded-[6px] px-2.5 py-2 text-[13px] hover:bg-[var(--color-surface-sunken)]"
+            >
+              <Settings className="size-3.5 text-[var(--color-muted)]" />
+              Ajustes
+            </NavLink>
+            <button
+              type="button"
+              onClick={() => void logout()}
+              className="flex w-full items-center gap-2 rounded-[6px] px-2.5 py-2 text-left text-[13px] text-[var(--color-negative)] hover:bg-[var(--color-negative-soft)]"
+            >
+              <LogOut className="size-3.5" />
+              Sair
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 }

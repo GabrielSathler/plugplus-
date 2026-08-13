@@ -396,16 +396,22 @@ export interface DashboardMetrics {
   spendVariation: number | null;
   spendDelta: Cents;
 
-  /** (custos fixos + fatura) / renda, em %. */
-  incomeCommitment: number;
+  /**
+   * (saidas do mes / renda do mes), em %.
+   *  quando nao ha renda lancada — a razao nao teria significado.
+   */
+  incomeCommitment: number | null;
   incomeCommitmentDelta: number | null;
 
   futureInstallmentsTotal: Cents;
   futureInstallmentsCount: number;
   futureInstallmentsLastMonth: YearMonth | null;
 
-  /** Saldo liquido dividido pelo custo fixo mensal medio. */
-  emergencyRunwayMonths: number;
+  /**
+   * Saldo liquido dividido pelo custo fixo mensal medio.
+   *  enquanto nao ha despesa conhecida — nao ha o que dividir.
+   */
+  emergencyRunwayMonths: number | null;
   emergencyRunwayDelta: number | null;
 }
 

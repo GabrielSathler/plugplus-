@@ -59,6 +59,7 @@ model Organization {
   spendingPlans SpendingPlan[]
   notificationPreferences NotificationPreference[]
   notificationDeliveries  NotificationDelivery[]
+  statementImports        StatementImport[]
 }
 
 model User {
@@ -72,9 +73,56 @@ model User {
   createdAt    DateTime @default(now())
 
   memberships Membership[]
+  refreshTokens           RefreshToken[]
   deviceTokens            DeviceToken[]
   notificationPreferences NotificationPreference[]
   notificationDeliveries  NotificationDelivery[]
+}
+
+/// Sessão de longa duração.
+///
+/// ADR — POR QUE O REFRESH TOKEN NÃO É UM JWT.
+///
+/// JWT é auto-contido e, por isso, IRREVOGÁVEL até expirar: um refresh token
+/// em JWT com 30 dias de validade que vaza dá 30 dias de acesso ao atacante e
+/// não há nada a fazer além de trocar a chave e derrubar todo mundo.
+///
+/// Aqui o refresh é um valor ALEATÓRIO opaco. O que fica gravado é só o hash
+/// dele — vazamento do banco não devolve tokens utilizáveis, mesma lógica de
+/// senha. Revogar é escrever uma data numa linha.
+///
+/// FAMÍLIA E DETECÇÃO DE REUSO: cada renovação invalida o token usado e emite
+/// outro na mesma `family`. Um token já consumido aparecer de novo significa
+/// que alguém copiou o token — o legítimo e o ladrão têm o mesmo valor. Nesse
+/// caso a família inteira é revogada e as duas partes precisam autenticar de
+/// novo. É a única defesa possível contra roubo de token: não dá para saber
+/// qual dos dois é o dono, então derruba os dois.
+model RefreshToken {
+  id     String @id @default(cuid())
+  userId String
+
+  /// SHA-256 do token. O valor cru só existe no cookie do cliente.
+  tokenHash String @unique
+  /// Agrupa a cadeia de rotações originada de um mesmo login.
+  family    String
+
+  expiresAt DateTime
+  /// Preenchido na rotação ou no logout. Token revogado nunca mais serve.
+  revokedAt DateTime?
+  /// Aponta para o token que substituiu este na rotação.
+  replacedById String?
+
+  /// Contexto do dispositivo, para a pessoa reconhecer a sessão numa lista.
+  userAgent String?
+  ip        String?
+
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([family])
+  @@index([expiresAt])
 }
 
 model Membership {
@@ -118,6 +166,7 @@ model Account {
   cardsPaidByAccount  CreditCard[]
   scenarioItems       ScenarioItem[]
   planItems           SpendingPlanItem[]
+  statementImports    StatementImport[]
 
   @@index([organizationId])
 }
@@ -228,6 +277,8 @@ model Transaction {
 
   /// Id no provedor externo, para deduplicar sincronizacoes repetidas.
   externalId String?
+  /// Lote de importacao que trouxe este lancamento. Permite desfazer em bloco.
+  importId   String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -239,6 +290,7 @@ model Transaction {
   category        Category?      @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   recurringRule   RecurringRule? @relation(fields: [recurringRuleId], references: [id], onDelete: SetNull)
   invoice         Invoice?       @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
+  import          StatementImport? @relation(fields: [importId], references: [id], onDelete: SetNull)
 
   @@unique([organizationId, externalId])
   @@index([organizationId, date])
@@ -586,4 +638,53 @@ model Goal {
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId])
+}
+
+/// Rastro de uma importacao de extrato.
+///
+/// ADR — GUARDAMOS O RASTRO, NUNCA O ARQUIVO.
+///
+/// Um extrato bancario carrega nome, CPF, agencia, conta e o historico
+/// completo. Depois de extraido, o dado util ja esta em `Transaction` e o
+/// arquivo vira passivo puro: exige criptografia em repouso, controle de
+/// acesso, politica de retencao e resposta a pedido de exclusao, e amplia o
+/// estrago de um vazamento para incluir documento bancario cru. Minimizacao de
+/// dados (LGPD, art. 6, III) diz para guardar o necessario a finalidade — e a
+/// finalidade termina quando o extrato vira lancamento.
+///
+/// O que fica e o suficiente para tres coisas que o arquivo faria:
+///   - deduplicar ("este arquivo ja foi importado", pelo hash);
+///   - auditar (quem importou o que, quando, de qual documento);
+///   - DESFAZER, que e o mais util: parser de PDF erra, e sem o vinculo do
+///     lote a pessoa teria que cacar 80 lancamentos errados a mao.
+model StatementImport {
+  id             String @id @default(cuid())
+  organizationId String
+  accountId      String?
+  importedById   String?
+
+  /// enum: OFX | CSV | PDF
+  format   String
+  filename String?
+  /// SHA-256 do arquivo. Identifica reimportacao sem guardar o conteudo.
+  fileHash String
+  /// Instituicao detectada no cabecalho, quando reconhecida.
+  bank     String?
+
+  /// Janela coberta pelo documento, derivada dos lancamentos lidos.
+  periodStart String?
+  periodEnd   String?
+
+  linesParsed   Int @default(0)
+  linesImported Int @default(0)
+  linesSkipped  Int @default(0)
+
+  createdAt DateTime @default(now())
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  account      Account?      @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  transactions Transaction[]
+
+  @@index([organizationId, createdAt])
+  @@index([organizationId, fileHash])
 }

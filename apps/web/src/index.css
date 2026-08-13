@@ -94,6 +94,22 @@
     background: var(--color-teal-soft);
   }
 
+  /* O preflight do Tailwind v4 deixou de aplicar cursor:pointer em <button>,
+     seguindo o padrao do navegador. Num app inteiro de botoes isso faz tudo
+     parecer nao-clicavel. Devolvemos, exceto no desabilitado. */
+  button:not(:disabled),
+  [role='button']:not(:disabled),
+  [role='switch']:not(:disabled),
+  [role='radio']:not(:disabled),
+  summary,
+  label:has(input[type='checkbox']) {
+    cursor: pointer;
+  }
+
+  button:disabled {
+    cursor: not-allowed;
+  }
+
   /* Foco visivel em tudo que e navegavel por teclado. */
   :focus-visible {
     outline: 2px solid var(--color-teal);

@@ -12,7 +12,7 @@
     "build": "tsc -p tsconfig.json",
     "dev": "tsc -p tsconfig.json --watch --preserveWatchOutput",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "node --test src/domain/credit-card-cycle.test.ts src/domain/installments.test.ts src/domain/projection.test.ts src/domain/plans.test.ts src/domain/notifications.test.ts"
+    "test": "node --test src/domain/credit-card-cycle.test.ts src/domain/installments.test.ts src/domain/projection.test.ts src/domain/plans.test.ts src/domain/notifications.test.ts src/domain/metrics.test.ts"
   },
   "devDependencies": {
     "typescript": "^5.7.3"

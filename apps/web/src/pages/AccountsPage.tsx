@@ -1,5 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CreditCard as CreditCardIcon, Landmark, Link2, RefreshCw } from 'lucide-react';
+import { CreditCard as CreditCardIcon, Landmark, Link2, Plus, RefreshCw, Upload } from 'lucide-react';
+import { useState } from 'react';
+import { ImportStatementDialog } from '../components/ImportStatementDialog';
+import { AccountForm } from '../components/forms/AccountForm';
+import { CreditCardForm } from '../components/forms/CreditCardForm';
 import { useWorkspace } from '../app/workspace';
 import { Badge, Button, Card, CardTitle, Dot, EmptyState, Skeleton, type Tone } from '../components/ui';
 import { api } from '../lib/api';
@@ -25,6 +29,10 @@ const CONNECTION_TONE: Record<string, Tone> = {
 export function AccountsPage() {
   const queryClient = useQueryClient();
   const { session } = useWorkspace();
+
+  const [importing, setImporting] = useState(false);
+  const [creatingAccount, setCreatingAccount] = useState(false);
+  const [creatingCard, setCreatingCard] = useState(false);
 
   const accounts = useQuery({
     queryKey: ['accounts'],
@@ -56,7 +64,17 @@ export function AccountsPage() {
             title="Contas"
             subtitle="O consolidado soma apenas as contas marcadas para totalizar"
             action={
-              <span className="num text-[15px] font-semibold">{money(totalBalance)}</span>
+              <div className="flex items-center gap-3">
+                <Button size="sm" onClick={() => setCreatingAccount(true)}>
+                  <Plus className="size-3.5" />
+                  Nova conta
+                </Button>
+                <Button size="sm" onClick={() => setImporting(true)}>
+                  <Upload className="size-3.5" />
+                  Importar extrato
+                </Button>
+                <span className="num text-[15px] font-semibold">{money(totalBalance)}</span>
+              </div>
             }
           />
           {accounts.isLoading ? (
@@ -98,7 +116,16 @@ export function AccountsPage() {
         </Card>
 
         <Card>
-          <CardTitle title="Cartoes" subtitle="Ciclo de fechamento e vencimento de cada cartao" />
+          <CardTitle
+            title="Cartoes"
+            subtitle="Ciclo de fechamento e vencimento de cada cartao"
+            action={
+              <Button size="sm" onClick={() => setCreatingCard(true)}>
+                <Plus className="size-3.5" />
+                Novo cartao
+              </Button>
+            }
+          />
           {cards.isLoading ? (
             <Skeleton className="h-40" />
           ) : (
@@ -199,6 +226,14 @@ export function AccountsPage() {
           </ul>
         )}
       </Card>
+
+      <AccountForm open={creatingAccount} onClose={() => setCreatingAccount(false)} />
+      <CreditCardForm open={creatingCard} onClose={() => setCreatingCard(false)} />
+      <ImportStatementDialog
+        open={importing}
+        onClose={() => setImporting(false)}
+        accounts={accounts.data ?? []}
+      />
     </div>
   );
 }

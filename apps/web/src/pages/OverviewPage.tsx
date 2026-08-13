@@ -3,6 +3,7 @@ import { AlertCircle, ArrowRight, Inbox } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useWorkspace } from '../app/workspace';
 import { BalanceChart } from '../components/charts';
+import { GettingStarted } from '../components/GettingStarted';
 import {
   Badge,
   Card,
@@ -44,6 +45,27 @@ export function OverviewPage() {
   }
 
   const { metrics: m } = data;
+
+  /*
+   * Workspace sem nada cadastrado não mostra oito KPIs zerados.
+   *
+   * Zero aqui não é informação — é a ausência dela, e a tela cheia de "R$ 0"
+   * não diz o que fazer a seguir. O critério é conta E contexto: sem conta
+   * conectada e sem nenhum gasto, ainda não existe nada para medir.
+   */
+  const isEmpty =
+    m.connectedAccounts === 0 && data.categorySpend.length === 0 && m.currentBalance === 0;
+
+  if (isEmpty) {
+    return (
+      <div className="space-y-3">
+        <GettingStarted />
+        <p className="text-center text-[12px] text-[var(--color-muted)]">
+          Assim que houver uma conta e um lancamento, o painel completo aparece aqui.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-3">
@@ -116,17 +138,36 @@ export function OverviewPage() {
       </div>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {/*
+          Sem renda lancada nao existe razao a calcular. E, mesmo com renda, um
+          comprometimento acima de 999% nao acrescenta nada ao que "acima de
+          999%" ja diz — o digito exato so rouba espaco e assusta.
+        */}
         <StatTile
           label="Comprometimento da renda"
-          value={percentWhole(m.incomeCommitment)}
-          valueTone={m.incomeCommitment > data.commitmentTarget ? 'warning' : undefined}
+          value={
+            m.incomeCommitment === null
+              ? '—'
+              : m.incomeCommitment > 999
+                ? '> 999%'
+                : percentWhole(m.incomeCommitment)
+          }
+          valueTone={
+            m.incomeCommitment !== null && m.incomeCommitment > data.commitmentTarget
+              ? 'warning'
+              : undefined
+          }
           badge={
             m.incomeCommitmentDelta !== null
               ? `${m.incomeCommitmentDelta >= 0 ? '+' : ''}${decimal(m.incomeCommitmentDelta)} p.p.`
               : undefined
           }
           badgeTone={(m.incomeCommitmentDelta ?? 0) > 0 ? 'negative' : 'positive'}
-          caption={`Meta da familia: ate ${data.commitmentTarget}%`}
+          caption={
+            m.incomeCommitment === null
+              ? 'Lance sua renda do mes para calcular'
+              : `Meta do plano: ate ${data.commitmentTarget}%`
+          }
         />
 
         <StatTile
@@ -143,15 +184,21 @@ export function OverviewPage() {
 
         <StatTile
           label="Reserva de emergencia"
-          value={`${decimal(m.emergencyRunwayMonths)} meses`}
-          valueTone={m.emergencyRunwayMonths < 3 ? 'warning' : undefined}
+          value={m.emergencyRunwayMonths === null ? '—' : `${decimal(m.emergencyRunwayMonths)} meses`}
+          valueTone={
+            m.emergencyRunwayMonths !== null && m.emergencyRunwayMonths < 3 ? 'warning' : undefined
+          }
           badge={
             m.emergencyRunwayDelta !== null
               ? `${m.emergencyRunwayDelta >= 0 ? '+' : ''}${decimal(m.emergencyRunwayDelta)}`
               : undefined
           }
           badgeTone={(m.emergencyRunwayDelta ?? 0) >= 0 ? 'positive' : 'negative'}
-          caption="Cobertura de custo fixo"
+          caption={
+            m.emergencyRunwayMonths === null
+              ? 'Cadastre suas contas fixas para calcular'
+              : 'Cobertura de custo fixo'
+          }
         />
       </div>
 
