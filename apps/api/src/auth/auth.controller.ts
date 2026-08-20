@@ -18,8 +18,6 @@ import { Ctx, Public, type RequestContext } from './auth.types';
 import { REFRESH_COOKIE, clearSessionCookies, setSessionCookies } from './cookies';
 import { TokenService } from './token.service';
 
-/* --------------------------------- DTOs ---------------------------------- */
-
 export class RegisterDto {
   @IsString() @MinLength(2, { message: 'Informe seu nome.' }) @MaxLength(80) name!: string;
 
